@@ -1,6 +1,7 @@
 import re
 import logging
 from datetime import datetime
+from django.db import transaction
 from django.utils import timezone
 from tracking.models import Visitor, Pageview
 from tracking.utils import get_ip_address
@@ -70,26 +71,27 @@ class VisitorTrackingMiddleware(object):
             time_on_site = (now - visitor.start_time).seconds
         visitor.time_on_site = time_on_site
 
-        visitor.save()
-
-        if TRACK_PAGEVIEWS:
-            # Match against `path_info` to not include the SCRIPT_NAME..
-            path = request.path_info.lstrip('/')
-            for url in TRACK_IGNORE_URLS:
-                if url.match(path):
-                    break
-            else:
-                referer = None
-                query_string = None
-
-                if TRACK_REFERER:
-                    referer = request.META.get('HTTP_REFERER', None)
-
-                if TRACK_QUERY_STRING:
-                    query_string = request.META.get('QUERY_STRING')
-
-                pageview = Pageview(visitor=visitor, url=request.path,
-                    view_time=now, method=request.method, referer=referer, query_string=query_string)
-                pageview.save()
+        with transaction.atomic():
+            visitor.save()
+    
+            if TRACK_PAGEVIEWS:
+                # Match against `path_info` to not include the SCRIPT_NAME..
+                path = request.path_info.lstrip('/')
+                for url in TRACK_IGNORE_URLS:
+                    if url.match(path):
+                        break
+                else:
+                    referer = None
+                    query_string = None
+    
+                    if TRACK_REFERER:
+                        referer = request.META.get('HTTP_REFERER', None)
+    
+                    if TRACK_QUERY_STRING:
+                        query_string = request.META.get('QUERY_STRING')
+    
+                    pageview = Pageview(visitor=visitor, url=request.path,
+                        view_time=now, method=request.method, referer=referer, query_string=query_string)
+                    pageview.save()
 
         return response
